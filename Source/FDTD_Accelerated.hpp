@@ -435,6 +435,18 @@ public:
 	{
 		return modelHeight_;
 	}
+
+	void resetState()
+	{
+		//Copy data to newly created device's memory//
+		float* temporaryGrid = new float[gridElements_ * 3];
+		memset(temporaryGrid, 0, gridByteSize_ * 3);
+
+		commandQueue_.enqueueWriteBuffer(modelGrid_, CL_TRUE, 0, gridByteSize_ * 3, temporaryGrid);
+
+		kernelScheme_.setArg(1, sizeof(cl_mem), &modelGrid_);
+		kernelConnections_.setArg(1, sizeof(cl_mem), &modelGrid_);
+	}
 };
 
 #endif

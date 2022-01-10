@@ -5,7 +5,7 @@ int rem(int x, int y)
 }
 
 __kernel
-void fdtdKernel(__global int* idGrid, __global float* modelGrid, __global float* boundaryGrid, int idxRotate, int idxSample, __global float* input, __global float* output, int inputPosition, __global int* outputPosition, double lambdaFive, double lambdaTwo, double lambdaFour, double lambdaSix, double lambdaThree, double lambdaOne, float strLambdaOne, float strLambdaFive, float strLambdaTwo, float strLambdaThree, float strLambdaFour)
+void fdtdKernel(__global int* idGrid, __global float* modelGrid, __global float* boundaryGrid, int idxRotate, int idxSample, __global float* input, __global float* output, int inputPosition, __global int* outputPosition, double lambdaFive, double lambdaTwo, double lambdaFour, double lambdaSix, double lambdaThree, double lambdaOne, float strLambdaOne, float strLambdaFive, float strLambdaTwo, float strLambdaThree, float strLambdaFour, float damp)
 {
 	//Rotation Index into model grid//
 	int gridSize = get_global_size(0) * get_global_size(1);
@@ -143,7 +143,7 @@ void fdtdKernel(__global int* idGrid, __global float* modelGrid, __global float*
 	if(idGrid[centreIdx] == 0)
 {t1x0y0 = 0.0;}
 if(idGrid[centreIdx] == 1) {
-		t1x0y0 = ((lambdaOne*t0x0y0)+(lambdaTwo*(t0x1y0+t0xM1y0+t0x0y1+t0x0yM1))+(lambdaThree*(t0x1y1+t0xM1yM1+t0x1yM1+t0xM1y1))+(lambdaFour*(t0x2y0+t0xM2y0+t0x0y2+t0x0yM2))+(lambdaFive*tM1x0y0)+(lambdaSix*(t0x1y0+t0xM1y0+t0x0y1+t0x0yM1-tM1x1y0-tM1xM1y0-tM1x0y1-tM1x0yM1)));
+		t1x0y0 = (((lambdaOne*t0x0y0)+(lambdaTwo*(t0x1y0+t0xM1y0+t0x0y1+t0x0yM1))+(lambdaThree*(t0x1y1+t0xM1yM1+t0x1yM1+t0xM1y1))+(lambdaFour*(t0x2y0+t0xM2y0+t0x0y2+t0x0yM2))+(lambdaFive*tM1x0y0)+(lambdaSix*(t0x1y0+t0xM1y0+t0x0y1+t0x0yM1-tM1x1y0-tM1xM1y0-tM1x0y1-tM1x0yM1)))) * damp;
 }
 	if(idGrid[centreIdx] == 2) {
 		t1x0y0 = ((strLambdaOne*modelGrid[t0x0y0Idx])+(strLambdaTwo*(modelGrid[t0x1y0Idx]+modelGrid[t0xM1y0Idx]))-(strLambdaThree*(modelGrid[t0x2y0Idx]+modelGrid[t0xM2y0Idx]))+(strLambdaFour*modelGrid[tM1x0y0Idx])-(strLambdaFive*(modelGrid[tM1x1y0Idx]+modelGrid[tM1xM1y0Idx])));
