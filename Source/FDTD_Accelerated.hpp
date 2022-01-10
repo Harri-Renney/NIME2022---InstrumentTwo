@@ -354,7 +354,7 @@ public:
 			" -cl-single-precision-constant"
 			//""
 		);
-		kernelProgram_.build(options);	//@Highlight - Keep this in?
+		kernelProgram_.build();	//@Highlight - Keep this in?
 
 		kernelScheme_ = cl::Kernel(kernelProgram_, "fdtdKernel", &errorStatus_);	//@ToDo - Hard coded the kernel name. Find way to generate this?
 		kernelConnections_ = cl::Kernel(kernelProgram_, "connectionsKernel", &errorStatus_);	//@ToDo - Hard coded the kernel name. Find way to generate this?
@@ -385,6 +385,11 @@ public:
 	void updateCoefficient(std::string aCoeff, uint32_t aIndex, float aValue)
 	{
 		kernelScheme_.setArg(aIndex, sizeof(float), &aValue);	//@ToDo - Need dynamicaly find index for setArg (The first param)
+	}
+
+	void updateCoefficient(std::string aCoeff, uint32_t aIndex, double aValue)
+	{
+		kernelScheme_.setArg(aIndex, sizeof(double), &aValue);	//@ToDo - Need dynamicaly find index for setArg (The first param)
 	}
 
 	void setInputPosition(int aInputs[])

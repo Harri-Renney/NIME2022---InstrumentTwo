@@ -1,10 +1,11 @@
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable
 int rem(int x, int y)
 {
     return (x % y + y) % y;
 }
 
 __kernel
-void fdtdKernel(__global int* idGrid, __global float* modelGrid, __global float* boundaryGrid, int idxRotate, int idxSample, __global float* input, __global float* output, int inputPosition, __global int* outputPosition, float lambdaFive, float lambdaTwo, float lambdaFour, float lambdaSix, float lambdaThree, float lambdaOne, float strLambdaOne, float strLambdaFive, float strLambdaTwo, float strLambdaThree, float strLambdaFour)
+void fdtdKernel(__global int* idGrid, __global float* modelGrid, __global float* boundaryGrid, int idxRotate, int idxSample, __global float* input, __global float* output, int inputPosition, __global int* outputPosition, double lambdaFive, double lambdaTwo, double lambdaFour, double lambdaSix, double lambdaThree, double lambdaOne, float strLambdaOne, float strLambdaFive, float strLambdaTwo, float strLambdaThree, float strLambdaFour)
 {
 	//Rotation Index into model grid//
 	int gridSize = get_global_size(0) * get_global_size(1);

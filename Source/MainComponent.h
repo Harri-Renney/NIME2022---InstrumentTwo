@@ -47,6 +47,8 @@ private:
 	//Physical Model.
 	bool isInit = false;
 	const std::string physicalModelPath_ = "../../Source/use_case_002_64.json";
+	//const std::string physicalModelPath_ = "../../Source/use_case_002_128.json";
+	//const std::string physicalModelPath_ = "../../Source/use_case_002_256.json";
 	//const std::string physicalModelPath_ = "../../Source/use_case_002_512.json";
 	FDTD_Accelerated* simulationModel;
 

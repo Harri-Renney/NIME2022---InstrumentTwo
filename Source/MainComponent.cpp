@@ -54,7 +54,7 @@ MainComponent::MainComponent() : wavetableExciter_(1, &(wave[0]), wave.size()),
 	sldPropagationOne.setValue(50);
 	sldPropagationOne.addListener(this);
 	addAndMakeVisible(sldDampingOne);
-	sldDampingOne.setRange(0.0, 0.5, 0.000001);
+	sldDampingOne.setRange(0.0, 0.0001, 0.000001);
 	sldDampingOne.setValue(0.1);
 	sldDampingOne.addListener(this);
 
@@ -63,7 +63,7 @@ MainComponent::MainComponent() : wavetableExciter_(1, &(wave[0]), wave.size()),
 	sldPropagationTwo.setValue(1000.0);
 	sldPropagationTwo.addListener(this);
 	addAndMakeVisible(sldDampingTwo);
-	sldDampingTwo.setRange(0.0, 1.0, 0.000001);
+	sldDampingTwo.setRange(0.0, 0.0001, 0.000001);
 	sldDampingTwo.setValue(0.005);
 	sldDampingTwo.addListener(this);
 
@@ -116,9 +116,9 @@ MainComponent::MainComponent() : wavetableExciter_(1, &(wave[0]), wave.size()),
 	setStringCoeffs(stringFundamentalFrequency, stringGenDamp, stringFreqDamp);
 
 	//512
-	double plateFundamentalFrequency = 1000;
+	double plateFundamentalFrequency = 50;
 	double plateGenDamp = 0.1;
-	double plateFreqDamp = 0.07;
+	double plateFreqDamp = 0.005;
 	//64
 	//double plateFundamentalFrequency = 1;
 	//double plateGenDamp = 0.1;
@@ -127,15 +127,16 @@ MainComponent::MainComponent() : wavetableExciter_(1, &(wave[0]), wave.size()),
 
 	//Setup output position
 	// String - 512
-	outputPos[0] = 7;
-	outputPos[1] = 464;
+	//outputPos[0] = 7;
+	//outputPos[1] = 464;
 	// String - 64
-	//outputPos[0] = 4;
-	//outputPos[1] = 51;
-	//outputPos[0] = 10;
-	//outputPos[1] = 40;
-	outputPos[0] = simulationModel->getModelHeight() / 2.0;
-	outputPos[1] = simulationModel->getModelWidth() / 2.0;
+	outputPos[0] = 4;
+	outputPos[1] = 51;
+	simulationModel->setOutputPosition(outputPos);
+	outputPos[0] = 10;
+	outputPos[1] = 40;
+	//outputPos[0] = simulationModel->getModelHeight() / 2.0;
+	//outputPos[1] = simulationModel->getModelWidth() / 2.0;
 	simulationModel->setOutputPosition(outputPos);
 	//outputPos[0] = simulationModel->getModelHeight() / 2.0;
 	//outputPos[1] = (simulationModel->getModelWidth() / 4.0) * 2.5;
@@ -227,20 +228,21 @@ void MainComponent::setPlateCoeffs(double aKappa, double aSigmaOne, double aSigm
 	double sampleRate = 44100;
 	double k = 1.0f / sampleRate;			//Timestep.
 
-	double h = 2 * sqrt(k*(_sigmaOne * _sigmaOne + sqrt(kappaSq + _sigmaOne * _sigmaOne)));
+	double h = (2 * sqrt(k*(_sigmaOne * _sigmaOne + sqrt(kappaSq + _sigmaOne * _sigmaOne))));
 	//double h = 2 * sqrt(k*(aSigmaTwo * aSigmaTwo + sqrt(maxKappaSq + aSigmaTwo * aSigmaTwo)));
 	//double h = 0.0095;
 	//double h = 0.30117005389;
 
+	float mu = (k * aKappa) / (h*h);
 	double d = 1.0f / (1.0f + _sigmaZero * k);
-	float lambdaFour = -(kappaSq * k * k) / (h * h * h * h) * d;		// (mu^2)
-	float lambdaThree = lambdaFour * 2.0f;
-	float lambdaTwo = lambdaFour * -8.0f;								// (8 * mu^2)
-	float S = (2.0f * _sigmaOne * k) / (h * h);							// S = 2 * sigmaOne * kappa / h^2
-	float lambdaOne = (2.0f - 4.0f * S + 20.0f * lambdaFour) * d;
-	float lambdaFive = (_sigmaZero * k - 1.0f + 4.0f * S) * d;			//(sigmaZero * k - 1 + 4 * S)
-	float lambdaSix = S * d;
-	float C4 = (k * k) * d;
+	double lambdaFour = -(kappaSq * k * k) / (h * h * h * h) * d;		// (mu^2)
+	double lambdaThree = lambdaFour * 2.0f;
+	double lambdaTwo = lambdaFour * -8.0f;								// (8 * mu^2)
+	double S = (2.0f * _sigmaOne * k) / (h * h);							// S = 2 * sigmaOne * kappa / h^2
+	double lambdaOne = (2.0f - 4.0f * S + 20.0f * lambdaFour) * d;
+	double lambdaFive = (_sigmaZero * k - 1.0f + 4.0f * S) * d;			//(sigmaZero * k - 1 + 4 * S)
+	double lambdaSix = S * d;
+	double C4 = (k * k) * d;
 
 	simulationModel->updateCoefficient("lambdaFive", 9, lambdaFive);
 	simulationModel->updateCoefficient("lambdaTwo", 10, lambdaTwo);
