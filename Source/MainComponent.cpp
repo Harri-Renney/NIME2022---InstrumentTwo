@@ -74,13 +74,13 @@ MainComponent::MainComponent() : wavetableExciter_(1, &(wave[0]), wave.size()),
 
 	//Labels//
 	addAndMakeVisible(lblPropagationOne);
-	lblPropagationOne.setText("Propagation", dontSendNotification);
+	lblPropagationOne.setText("Kappa", dontSendNotification);
 	lblPropagationOne.attachToComponent(&sldPropagationOne, true);
 	addAndMakeVisible(lblDampingOne);
-	lblDampingOne.setText("Damping", dontSendNotification);
+	lblDampingOne.setText("General Damping", dontSendNotification);
 	lblDampingOne.attachToComponent(&sldDampingOne, true);
 	addAndMakeVisible(lblPropagationTwo);
-	lblPropagationTwo.setText("Propagation Two", dontSendNotification);
+	lblPropagationTwo.setText("Frequency Damping", dontSendNotification);
 	lblPropagationTwo.attachToComponent(&sldPropagationTwo, true);
 	addAndMakeVisible(lblDampingTwo);
 	lblDampingTwo.setText("Damping Two", dontSendNotification);
@@ -324,15 +324,10 @@ void MainComponent::resized()
     // If you add any child components, this is where you should
     // update their positions.
 	uint32_t sliderLeft = 50;
-	btnCreateDrum.setBounds(30, 350, getWidth() - 60, 40);
-	sldGridWidth.setBounds(btnCreateDrum.getX() + sliderLeft, btnCreateDrum.getY() + 40, btnCreateDrum.getWidth() - sliderLeft - 10, 40);
-	sldGridHeight.setBounds(sldGridWidth.getX(), sldGridWidth.getY() + 40, btnCreateDrum.getWidth() - sliderLeft - 10, 40);
-	sldPropagationOne.setBounds(sldGridHeight.getX(), sldGridHeight.getY() + 40, btnCreateDrum.getWidth() - sliderLeft - 10, 40);
-	sldDampingOne.setBounds(sldPropagationOne.getX(), sldPropagationOne.getY() + 40, btnCreateDrum.getWidth() - sliderLeft - 10, 40);
-	sldPropagationTwo.setBounds(sldDampingOne.getX(), sldDampingOne.getY() + 40, btnCreateDrum.getWidth() - sliderLeft - 10, 40);
-	sldDampingTwo.setBounds(sldPropagationTwo.getX(), sldPropagationTwo.getY() + 40, btnCreateDrum.getWidth() - sliderLeft - 10, 40);
-	sldInputDuration.setBounds(sldDampingTwo.getX(), sldDampingTwo.getY() + 40, btnCreateDrum.getWidth() - sliderLeft - 10, 40);
-	btnExcite.setBounds(btnCreateDrum.getX(), sldInputDuration.getY() + 40, btnCreateDrum.getWidth(), 40);
+	sldPropagationOne.setBounds(100, 450, getWidth() - 60, 40);
+	sldDampingOne.setBounds(sldPropagationOne.getX(), sldPropagationOne.getY() + 40, sldPropagationOne.getWidth() - sliderLeft - 10, 40);
+	sldDampingTwo.setBounds(sldDampingOne.getX(), sldDampingOne.getY() + 40, sldPropagationOne.getWidth() - sliderLeft - 10, 40);
+	sldInputDuration.setBounds(sldDampingTwo.getX(), sldDampingTwo.getY() + 40, sldPropagationOne.getWidth() - sliderLeft - 10, 40);
 }
 
 //Interface//
