@@ -23,6 +23,12 @@ using nlohmann::json;
 
 #include "Visualizer.hpp"
 
+#include <chrono>
+#include <thread>
+
+
+#define MAX_CONNECTIONS 100
+
 enum DeviceType { INTEGRATED = 32902, DISCRETE = 4098, NVIDIA = 4318 };
 enum Implementation { OPENCL, CUDA, VULKAN, DIRECT3D };
 
@@ -56,7 +62,10 @@ private:
 	cl::Buffer outputBuffer_;
 	cl::Buffer excitationBuffer_;
 	cl::Buffer localBuffer_;
+	cl::Buffer inputPositionBuffer_;
 	cl::Buffer outputPositionBuffer_;
+	cl::Buffer connectionsBuffer_;
+	cl::Buffer coeffBuffer_;
 
 	//Model//
 	int listenerPosition_[2];
@@ -66,6 +75,8 @@ private:
 	int modelHeight_;
 	int gridElements_;
 	int gridByteSize_;
+	int numConnections_;
+	int* connections_;
 
 	//Output and excitations//
 	typedef float base_type_;
@@ -79,6 +90,11 @@ private:
 
 	float* renderGrid;
 	int* idGridInput_;
+
+	const int maxCoeffs_ = 200;
+	const int maxOutputs_ = 100;
+	int outputCounter_ = 1;
+	int* inputGridInput_;
 	int* outputGridInput_;
 	float* boundaryGridInput_;
 	float emptyBuffer_[44100];
@@ -122,18 +138,26 @@ private:
 		idGrid_ = cl::Buffer(context_, CL_MEM_READ_WRITE, gridByteSize_);
 		modelGrid_ = cl::Buffer(context_, CL_MEM_READ_WRITE, gridByteSize_ * 3);
 		boundaryGridBuffer_ = cl::Buffer(context_, CL_MEM_READ_WRITE, gridByteSize_);
-		outputBuffer_ = cl::Buffer(context_, CL_MEM_READ_WRITE, output_.bufferSize_ * sizeof(float));
+		outputBuffer_ = cl::Buffer(context_, CL_MEM_READ_WRITE, maxOutputs_ * output_.bufferSize_ * sizeof(float));
 		excitationBuffer_ = cl::Buffer(context_, CL_MEM_READ_WRITE, excitation_.bufferSize_ * sizeof(float));
+		inputPositionBuffer_ = cl::Buffer(context_, CL_MEM_READ_WRITE, gridByteSize_);
 		outputPositionBuffer_ = cl::Buffer(context_, CL_MEM_READ_WRITE, gridByteSize_);
+		connectionsBuffer_ = cl::Buffer(context_, CL_MEM_READ_WRITE, gridByteSize_);
+		coeffBuffer_ = cl::Buffer(context_, CL_MEM_READ_WRITE, maxCoeffs_ * sizeof(float));
 
 		//Copy data to newly created device's memory//
 		float* temporaryGrid =  new float[gridElements_ * 3];
 		memset(temporaryGrid, 0, gridByteSize_ * 3);
 
+		//temporaryGrid[130808 * 1] = 1.0;
+		//temporaryGrid[130808 * 2] = 1.0;
+
 		commandQueue_.enqueueWriteBuffer(idGrid_, CL_TRUE, 0, gridByteSize_ , idGridInput_);
 		commandQueue_.enqueueWriteBuffer(modelGrid_, CL_TRUE, 0, gridByteSize_*3, temporaryGrid);
 		commandQueue_.enqueueWriteBuffer(boundaryGridBuffer_, CL_TRUE, 0, gridByteSize_, boundaryGridInput_);
+		commandQueue_.enqueueWriteBuffer(inputPositionBuffer_, CL_TRUE, 0, gridByteSize_, inputGridInput_);
 		commandQueue_.enqueueWriteBuffer(outputPositionBuffer_, CL_TRUE, 0, gridByteSize_, outputGridInput_);
+		commandQueue_.enqueueWriteBuffer(connectionsBuffer_, CL_TRUE, 0, gridByteSize_, connections_);
 	}
 	void step()
 	{
@@ -171,8 +195,16 @@ public:
 		delete vis;
 	}
 
+	//void fillBufferCPU(float* input, float* output, uint32_t numSteps)
+	//{
+	//	for(uint32_t i = 0; i != width)
+	//}
+
 	void fillBuffer(float* input, float* output, uint32_t numSteps)
 	{
+		//Set buffer length.
+		kernelScheme_.setArg(10, sizeof(int), &numSteps);
+
 		//Load excitation samples into GPU//
 		commandQueue_.enqueueWriteBuffer(excitationBuffer_, CL_TRUE, 0, numSteps * sizeof(float), input);
 		kernelScheme_.setArg(5, sizeof(cl_mem), &excitationBuffer_);
@@ -187,13 +219,22 @@ public:
 			kernelConnections_.setArg(3, sizeof(int), &bufferRotationIndex_);
 
 			step();
+
+			//renderSimulation();
+
+			//std::this_thread::sleep_for(std::chrono::milliseconds(2));
 		}
 
 		output_.resetIndex();
 		excitation_.resetIndex();
 
-		commandQueue_.enqueueReadBuffer(outputBuffer_, CL_TRUE, 0, numSteps * sizeof(float), output);
+		float* totalOutputBuffer = new float[numSteps*outputCounter_];
+		commandQueue_.enqueueReadBuffer(outputBuffer_, CL_TRUE, 0, outputCounter_ * numSteps * sizeof(float), totalOutputBuffer);
 		commandQueue_.enqueueWriteBuffer(outputBuffer_, CL_TRUE, 0, numSteps * sizeof(float), emptyBuffer_);
+
+		mixOutput(totalOutputBuffer, output, numSteps);
+
+		delete totalOutputBuffer;
 	}
 	void renderSimulation()
 	{
@@ -210,12 +251,13 @@ public:
 		json jsonFile = json::parse(ifs);
 		//std::cout << j << std::endl;
 
-		 modelWidth_ = jsonFile["buffer"].size();
-		 modelHeight_= jsonFile["buffer"][0].size();
+		modelWidth_ = jsonFile["buffer"].size();
+		modelHeight_ = jsonFile["buffer"][0].size();
 
-		 outputGridInput_ = new int[modelWidth_*modelHeight_];
-		 boundaryGridInput_ = new float[modelWidth_*modelHeight_];
-		 idGridInput_ = new int[modelWidth_*modelHeight_];
+		inputGridInput_ = new int[modelWidth_*modelHeight_];
+		outputGridInput_ = new int[modelWidth_*modelHeight_];
+		boundaryGridInput_ = new float[modelWidth_*modelHeight_];
+		idGridInput_ = new int[modelWidth_*modelHeight_];
 		for (int i = 0; i != modelWidth_; ++i)
 		{
 			for (int j = 0; j != modelHeight_; ++j)
@@ -237,19 +279,46 @@ public:
 		model_ = new Model(modelWidth_, modelHeight_, aBoundaryValue);
 		model_->setInputPosition(aInputPosition[0], aInputPosition[1]);
 
+		ofstream fpCoords;
+		std::string strCoordsFilenameInit = "coords";
+		for (int n = 0; n != 15; ++n)
+		{
+			std::string strCoordsFilename = strCoordsFilenameInit;
+			strCoordsFilename.append(std::to_string(n));
+			strCoordsFilename.append(".txt");
+			fpCoords.open(strCoordsFilename.c_str());
+			for (int i = 1; i != (modelWidth_ - 1); ++i)
+			{
+				for (int j = 1; j != (modelHeight_ - 1); ++j)
+				{
+					if (idGridInput_[i*modelWidth_ + j] == n)
+					{
+						fpCoords << j << ", " << i << "\n";
+						fpCoords << i * modelWidth_ + j << "\n";
+					}
+				}
+			}
+			fpCoords.close();
+		}
+
+		//std::string fModelCoords = "positions";
+		//myfile.open(fModelCoords);
+
+		//for (int i = 1; i != (modelWidth_ - 1); ++i)
+		//{
+		//	for (int j = 1; j != (modelHeight_ - 1); ++j)
+		//	{
+		//		myfile << j << ", " << i << "\n";
+		//		myfile << i * modelWidth_ + j << "\n";
+		//	}
+		//}
+
 		//@TODO - Temporary post-processing boundary calculation. Remove when added in SVG parser.
 		int boundaryCount = 0;
-		ofstream myfile;
-		myfile.open("positions.txt");
-		for (int i = 1; i != (modelWidth_- 1); ++i)
+		for (int i = 1; i != (modelWidth_ - 1); ++i)
 		{
 			for (int j = 1; j != (modelHeight_ - 1); ++j)
 			{
-				if (idGridInput_[i*modelWidth_ + j] == 2)
-				{
-					myfile << j << ", " << i << "\n";
-					myfile << i * modelWidth_ + j << "\n";
-				}
 				//@ToDo - Work out calcualting boundary grid correctly.
 				//This way trying to manually treat string differently from others.
 				//if (idGridInput_[i*modelWidth_ + j] == 3)
@@ -308,19 +377,101 @@ public:
 						boundaryGridInput_[i*modelWidth_ + j] = 1.0;
 				}*/
 
-				if (idGridInput_[i*modelWidth_ + j] > 0 && (idGridInput_[(i-1)*modelWidth_ + j] == 0 || idGridInput_[(i+1)*modelWidth_ + j] == 0 || idGridInput_[i*modelWidth_ + j-1] == 0 || idGridInput_[i*modelWidth_ + j+1] == 0))
-				//if (idGridInput_[i][j] > 0 && (idGridInput_[i-1][j] == 0 || idGridInput_[i+1][j] == 0 || idGridInput_[i][j-1] == 0 || idGridInput_[i][j+1] == 0))
+				if (idGridInput_[i*modelWidth_ + j] > 0 && (idGridInput_[(i - 1)*modelWidth_ + j] == 0 || idGridInput_[(i + 1)*modelWidth_ + j] == 0 || idGridInput_[i*modelWidth_ + j - 1] == 0 || idGridInput_[i*modelWidth_ + j + 1] == 0))
+					//if (idGridInput_[i][j] > 0 && (idGridInput_[i-1][j] == 0 || idGridInput_[i+1][j] == 0 || idGridInput_[i][j-1] == 0 || idGridInput_[i][j+1] == 0))
 				{
-					boundaryGridInput_[i*modelWidth_ + j] = aBoundaryValue;
+					//boundaryGridInput_[i*modelWidth_ + j] = aBoundaryValue;
 				}
 				//std::cout << model_->boundaryGrid_.valueAt(i, j) << " | ";
 			}
 			//std::cout << std::endl;
 		}
-		myfile.close();
+		//boundaryGridInput_[122376] = 1.0;
+		//boundaryGridInput_[122888] = 1.0;
+		//boundaryGridInput_[173064] = 1.0;
+		//boundaryGridInput_[173576] = 1.0;
+
+		//C3 for string 1 - Boundary at 232-162=70.
+		boundaryGridInput_[17668] = 1.0;
+		boundaryGridInput_[17924] = 1.0;
+		//C#3 for string 2 - Boundary at 229-154=75.
+		boundaryGridInput_[18955] = 1.0;
+		boundaryGridInput_[19211] = 1.0;
+		//D3 for string 3 - Boundary at 227-146=81.
+		boundaryGridInput_[20498] = 1.0;
+		boundaryGridInput_[20754] = 1.0;
+		//D#3 for string 4 - Boundary at 226-138=88
+		boundaryGridInput_[22297] = 1.0;
+		boundaryGridInput_[22553] = 1.0;
+		//E3 for string 5 - Boundary at 230-131=99
+		boundaryGridInput_[25120] = 1.0;
+		boundaryGridInput_[25376] = 1.0;
+		//F3 for string 6 - Boundary at 229-124=105
+		boundaryGridInput_[26664] = 1.0;
+		boundaryGridInput_[26920] = 1.0;
+		//F#3 for string 7 - Boundary at 231-117=114
+		boundaryGridInput_[28974] = 1.0;
+		boundaryGridInput_[29230] = 1.0;
+		//G3 for string 8 - Boundary at 226-111=115
+		boundaryGridInput_[29238] = 1.0;
+		boundaryGridInput_[29494] = 1.0;
+		//G#3 for string 9 - Boundary at 227-105=122
+		boundaryGridInput_[31037] = 1.0;
+		boundaryGridInput_[31293] = 1.0;
+		//A3 for string 10 - Boundary at 230-99=131
+		boundaryGridInput_[33347] = 1.0;
+		boundaryGridInput_[33603] = 1.0;
+		//A#3 for string 10 - Boundary at 230-99=131
+		boundaryGridInput_[33347] = 1.0;
+		boundaryGridInput_[33603] = 1.0;
+		//A#3 for string 11 - Boundary at 233-94=139
+		boundaryGridInput_[35402] = 1.0;
+		boundaryGridInput_[35658] = 1.0;
+		//B3 for string 12 - Boundary at230-88=142
+		boundaryGridInput_[36177] = 1.0;
+		boundaryGridInput_[36433] = 1.0;
+		//C4 for string 13 - Boundary at 227-83=144
+		boundaryGridInput_[36441] = 1.0;
+		boundaryGridInput_[36697] = 1.0;
+
 		gridElements_ = (modelWidth_ * modelHeight_);
 		gridByteSize_ = (gridElements_ * sizeof(float));
 		renderGrid = new float[gridElements_ * 3];
+		connections_ = new int[gridElements_]();
+
+		//Load up connections - @ToDo - Make this automatically loaded from json configration of model rather than manual.
+
+		//Grid way
+
+		//256
+		connections_[29078] = 59140;
+		connections_[29083] = 59403;
+		//connections_[225310] = 112519;
+		//connections_[230953] = 112424;
+		//connections_[231989] = 112350;
+		//connections_[231487] = 112296;
+		//connections_[232521] = 111974;
+		//connections_[232020] = 111884;
+		//connections_[233569] = 111812;
+		//connections_[233067] = 111477;
+		//connections_[233591] = 111392;
+		//connections_[234114] = 111310;
+		//connections_[234638] = 110985;
+
+		//512
+		//connections_[233992] = 112908;
+		//connections_[236051] = 112899;
+		//connections_[225310] = 112519;
+		//connections_[230953] = 112424;
+		//connections_[231989] = 112350;
+		//connections_[231487] = 112296;
+		//connections_[232521] = 111974;
+		//connections_[232020] = 111884;
+		//connections_[233569] = 111812;
+		//connections_[233067] = 111477;
+		//connections_[233591] = 111392;
+		//connections_[234114] = 111310;
+		//connections_[234638] = 110985;
 
 		if (implementation_ == Implementation::OPENCL)
 		{
@@ -359,7 +510,11 @@ public:
 		kernelScheme_ = cl::Kernel(kernelProgram_, "fdtdKernel", &errorStatus_);	//@ToDo - Hard coded the kernel name. Find way to generate this?
 		kernelConnections_ = cl::Kernel(kernelProgram_, "connectionsKernel", &errorStatus_);	//@ToDo - Hard coded the kernel name. Find way to generate this?
 		if (errorStatus_)
+		{
 			std::cout << "ERROR building OpenCL kernel from source. Status code: " << errorStatus_ << std::endl;
+
+			//juce::Logger::getCurrentLogger()->outputDebugString("ERROR building OpenCL kernel from source.Status code : ");
+		}
 
 		kernelScheme_.setArg(0, sizeof(cl_mem), &idGrid_);
 		kernelScheme_.setArg(1, sizeof(cl_mem), &modelGrid_);
@@ -369,10 +524,12 @@ public:
 		kernelConnections_.setArg(0, sizeof(cl_mem), &idGrid_);
 		kernelConnections_.setArg(1, sizeof(cl_mem), &modelGrid_);
 		kernelConnections_.setArg(2, sizeof(cl_mem), &boundaryGridBuffer_);
+		kernelConnections_.setArg(4, sizeof(int), &numConnections_);
+		kernelConnections_.setArg(5, sizeof(cl_mem), &connectionsBuffer_);
 
 		int inPos = model_->getInputPosition();
 		int outPos = model_->getOutputPosition();
-		kernelScheme_.setArg(7, sizeof(int), &inPos);
+		kernelScheme_.setArg(7, sizeof(cl_mem), &inputPositionBuffer_);
 		kernelScheme_.setArg(8, sizeof(cl_mem), &outputPositionBuffer_);
 	}
 	void createMatrixEquation(const std::string aPath);	//How is the matrix equations defined? Is there just a default matrix equation that can be formed for many equations or need be defined?
@@ -386,23 +543,48 @@ public:
 	{
 		kernelScheme_.setArg(aIndex, sizeof(float), &aValue);	//@ToDo - Need dynamicaly find index for setArg (The first param)
 	}
+	void updateCoefficientConnection(std::string aCoeff, uint32_t aIndex, float aValue)
+	{
+		kernelConnections_.setArg(aIndex, sizeof(float), &aValue);	//@ToDo - Need dynamicaly find index for setArg (The first param)
+	}
 
 	void updateCoefficient(std::string aCoeff, uint32_t aIndex, double aValue)
 	{
 		kernelScheme_.setArg(aIndex, sizeof(double), &aValue);	//@ToDo - Need dynamicaly find index for setArg (The first param)
 	}
 
+	void resetInputPosition()
+	{
+		memset(inputGridInput_, 0, gridByteSize_);
+		commandQueue_.enqueueWriteBuffer(inputPositionBuffer_, CL_TRUE, 0, gridByteSize_, inputGridInput_);
+		kernelScheme_.setArg(7, sizeof(cl_mem), &inputPositionBuffer_);
+	}
 	void setInputPosition(int aInputs[])
 	{
 		model_->setInputPosition(aInputs[0], aInputs[1]);
-		int inPos = model_->getInputPosition();
-		kernelScheme_.setArg(7, sizeof(int), &inPos);
+		int inPos = (aInputs[1] * 256 + aInputs[0]);
+		inputGridInput_[inPos] = 1;
+	}
+	void updateInputPositions()
+	{
+		commandQueue_.enqueueWriteBuffer(inputPositionBuffer_, CL_TRUE, 0, gridByteSize_, inputGridInput_);
+		kernelScheme_.setArg(7, sizeof(cl_mem), &inputPositionBuffer_);
+	}
+	void mixOutput(float* aInput, float* aOutput, int bufferSize)
+	{
+		for (uint32_t i = 0; i != bufferSize; ++i)
+		{
+			float sum = 0.0;
+			for (uint32_t j = 1; j != outputCounter_; ++j)
+				sum += aInput[(j-1)*bufferSize + i];
+			aOutput[i] = sum / (float)(outputCounter_+1.0);
+		}
 	}
 	void setOutputPosition(int aOutputs[])
 	{
 		model_->setOutputPosition(aOutputs[0], aOutputs[1]);
 		int flatPosition = model_->getOutputPosition();
-		outputGridInput_[flatPosition] = 1;
+		outputGridInput_[flatPosition] = outputCounter_++;
 		commandQueue_.enqueueWriteBuffer(outputPositionBuffer_, CL_TRUE, 0, gridByteSize_, outputGridInput_);
 		kernelScheme_.setArg(8, sizeof(cl_mem), &outputPositionBuffer_);
 	}
@@ -446,6 +628,43 @@ public:
 
 		kernelScheme_.setArg(1, sizeof(cl_mem), &modelGrid_);
 		kernelConnections_.setArg(1, sizeof(cl_mem), &modelGrid_);
+	}
+
+	void getModels(int aNumPointsStrings[], int aNumPointsPlate, float** aStrings, float* aPlate)
+	{
+		commandQueue_.enqueueReadBuffer(modelGrid_, CL_TRUE, 0, gridByteSize_, renderGrid);
+
+		aNumPointsPlate = 0;
+		for (int i = 0; i != (modelWidth_); ++i)
+		{
+			for (int j = 0; j != (modelHeight_); ++j)
+			{
+				if (idGridInput_[i*modelWidth_ + j] == 1)
+				{
+					aPlate[aNumPointsPlate++] = renderGrid[i*modelWidth_ + j];
+				}
+			}
+		}
+		for (int n = 0; n != 13; ++n)
+		{
+			aNumPointsStrings[n] = 0;
+			for (int i = 1; i != (modelWidth_ - 1); ++i)
+			{
+				for (int j = 1; j != (modelHeight_ - 1); ++j)
+				{
+					if (idGridInput_[i*modelWidth_ + j] == n+2)
+					{
+						aStrings[n][aNumPointsStrings[n]++] = renderGrid[i*modelWidth_ + j];
+					}
+				}
+			}
+		}
+	}
+
+	void updateCoefficients(float aCoeffs[], uint32_t aNumCoeffs)
+	{
+		commandQueue_.enqueueWriteBuffer(coeffBuffer_, CL_TRUE, 0, aNumCoeffs * sizeof(float), aCoeffs);
+		kernelScheme_.setArg(9, sizeof(cl_mem), &coeffBuffer_);
 	}
 };
 

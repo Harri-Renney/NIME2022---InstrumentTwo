@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="L9HrjL" name="Use_case_002" projectType="guiapp" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" displaySplashScreen="1" jucerFormatVersion="1">
-  <MAINGROUP id="VcD5hG" name="Use_case_002">
+<JUCERPROJECT id="L9HrjL" name="NIME2022 - Instrument 2" projectType="guiapp"
+              useAppConfig="0" addUsingNamespaceToJuceHeader="0" displaySplashScreen="1"
+              jucerFormatVersion="1">
+  <MAINGROUP id="VcD5hG" name="NIME2022 - Instrument 2">
     <GROUP id="{7F6ECACB-031A-7B63-1AD1-9F0D1E228886}" name="Source">
       <FILE id="TbC6MX" name="Wavetable_Exciter.h" compile="0" resource="0"
             file="Source/Wavetable_Exciter.h"/>

@@ -29,9 +29,14 @@ float colormap_blue(float x) {
     }
 }
 
+float colormap_grey(float x)
+{
+	return (x + 1.0) / 2.0;
+}
+
 void main()
 {
     //FragColor = vec4(tex_c.x * tex_c.y * 1.0f, 0.0f, 0.0f, 1.0f);
     vec4 texture = texture(aTexture, tex_c);
-    FragColor = vec4(colormap_red(texture.x), colormap_green(texture.x), colormap_blue(texture.x), 1.0);
+    FragColor = vec4(colormap_grey(texture.x), colormap_grey(texture.x), colormap_grey(texture.x), 1.0);
 }

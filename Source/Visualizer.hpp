@@ -262,6 +262,13 @@ public:
 		glfwMakeContextCurrent(window_);
 		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
+
+		//@ToDo can't do this in shader because it clamps float in range [0-1].
+		for (uint32_t i = 0; i != textureHeight_; ++i)
+		{
+			for(uint32_t j = 0; j != textureWidth_; ++j)
+				aData[i*textureWidth_ + j] = (aData[i*textureWidth_+j] + 1.0) / 2.0;
+		}
 		
 		//GL_UNSIGNED_BYTE
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, textureWidth_, textureHeight_, 0, GL_RED, GL_FLOAT, aData);
